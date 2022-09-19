@@ -1,0 +1,85 @@
+---
+title: "Income comparison"
+author: "Rikiya Honda"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE,
+                      fig.height = 6,
+                      fig.width = 8)
+Sys.setenv(lang = "en")
+```
+
+
+# Preparation
+
+```{r, results='hide'}
+# load packages 
+packages <- c("readr", "dplyr", "janitor", "stringr", "tidyr")
+lapply(packages, library, character.only = TRUE)
+
+# import data 
+path <- "https://bit.ly/3qDA2VN"
+df_raw <- read_csv(path)
+
+# tidy columns
+df_tidy <- df_raw %>%
+  clean_names() 
+
+# rename columns by removing `x` from their columns
+df_tidy <- `colnames<-`(df_tidy, str_remove(colnames(df_tidy), "x"))
+
+# create a new dataframe
+df <- tibble(
+  "2007" = c(df_tidy[[1]], df_tidy[[3]], df_tidy[[5]]),
+  "2017" = c(df_tidy[[2]], df_tidy[[4]], df_tidy[[6]])
+)
+```
+For this problem set, I used the follwoing dataframe with 2 columns and 51 data entry.
+
+```{r, results='show'}
+# show 
+knitr::kable(head(df))
+```
+
+# practice problem 1. 
+
+
+```{r}
+# practice problem 1. 
+result1 <- tibble(
+ mean_value = lapply(df, mean, na.rm = T),
+ median_value = lapply(df, median, na.rm = T),
+ sd_value = lapply(df, sd, na.rm = T),
+ q_25 = lapply(df, quantile, probs = 0.25, na.rm = T),
+ q_75 = lapply(df, quantile, probs = 0.75, na.rm = T),
+ q_95 = lapply(df, quantile, probs = 0.95, na.rm = T)
+)
+
+# add some modification
+result1 <- 
+  unnest(result1) %>% # unnest 
+  t() %>% # exchange rows and columns
+  `colnames<-`(value = c("2007", "2017")) # add column names
+  
+
+# adjust to $000s
+result1 <- 
+  result1 * 1000
+
+# show
+knitr::kable(result1)
+```
+
+# practice problem 2.
+
+It is true that the average income increased from 2007 to 2017 because it went up from \$63k to \$67k duirng his/her administration. However, the country as a whole would not be better off since the median and the first quantile income decreased by \$1.5k and \$2.75k respectively, though people in the upper class experienced a huge  increase in their income. It would indicate that the only weathly get wealthier, and the income gap widened. It would be misleading to consider an incrase in the average incocme as econoimc benefits for all people in the country. 
+
+
