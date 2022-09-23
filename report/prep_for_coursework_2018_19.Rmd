@@ -101,6 +101,8 @@ df_tidy %>%
 
 ## 月々のオーダーの数と出荷数
 
+毎年11月、12月にかけてオーダー数が増えている。
+
 ```{r}
 g1 <- 
   df %>%
@@ -118,6 +120,14 @@ g2 <-
   geom_bar()
 
 g1/g2
+```
+
+### 2011年の例
+
+```{r}
+df %>% 
+  group_by(order_year, order_date) %>% 
+  summarise(total = n()) %>% filter(order_year == 2011, total > 50) 
 ```
 
 ## オーダーを受けてから出荷するまでの日付に国ごとのばらつきはあるのか？
@@ -217,7 +227,7 @@ df %>%
   top_n(3, market_profit)
 ```
 
-## インドと中国では特にどのカテゴリーが売れているのか？
+## インドと中国では特にどのsubcategoryが売れているのか？
 
 technology, furniture, office suplliesで変らない。
 
@@ -225,15 +235,15 @@ technology, furniture, office suplliesで変らない。
 # which category is sold in those region? 
 df %>% 
   filter(country %in% c("India", "China")) %>% 
-  group_by(order_year, category) %>% 
-  summarise(profit_by_category = sum(profit)) %>% 
-  arrange(order_year, desc(profit_by_category)) %>% 
-  top_n(10, desc(profit_by_category)) 
+  group_by(order_year, sub_category) %>% 
+  summarise(profit_by_subcategory = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_subcategory)) %>% 
+  top_n(10, desc(profit_by_subcategory)) 
 ```
 
 ## 大手取引先はいるのか？
 
-いるが、それぞれがバラバラ。もっとフォローアップを増やし、onetimeではなく、継続的な大手取引先を作るべき。
+いるが、それぞれがバラバラ。もっとフォローアップを増やし、one-timeではなく、継続的な大手取引先を作るべき。
 
 ```{r}
 df %>% 
@@ -247,7 +257,7 @@ df %>%
 
 ```{r}
 
-# top10 customers customer's id for every years.
+# top10 customers customer's id for every year.
 major_customers <- 
   df %>% 
   group_by(order_year, customer_id) %>% 
@@ -258,15 +268,13 @@ major_customers <-
   select(customer_id) %>% 
   unlist() %>% 
   unname()
-```
 
-## 
 
-```{r}
 df %>% 
   filter(customer_id %in% major_customers) %>%
   group_by(order_year, customer_id, sub_category) %>% 
-  summarise(profit_subcategory = sum(profit)) %>% 
-  arrange(order_year, desc(profit_subcategory))
+  summarise(profit_by_subcategory = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_subcategory)) %>% 
+  top_n(1, profit_by_subcategory)
 ```
 
