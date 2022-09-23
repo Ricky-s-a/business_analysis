@@ -37,6 +37,10 @@ df <- df_tidy %>%
   ) %>% 
   arrange(desc(order_date))
 
+# show 
+df
+
+
 # explore the dataset -----------------------------------------------------
 
 # summary of numeric data
@@ -99,6 +103,39 @@ df %>%
   mutate(profit_ratio_by_year = sum_profit/filter(profit_by_year, order_year == order_year)[[2]]) %>% 
   plot()
 
+# Q. the most profitable market, product, category, sub_category, 
+df %>% 
+  group_by(order_year, market) %>% 
+  summarise(profit = sum(profit)) %>% 
+  arrange(order_year,desc(profit)) %>% 
+  view()
+
+# -> especially the markets in APAc and EU are expanding. 
+
+# Q. which country?
+df %>% 
+  filter(market %in% c("APAC", "EU")) %>% 
+  group_by(order_year, country) %>% 
+  summarise(market_profit = sum(profit)) %>% 
+  arrange(order_year, desc(market_profit)) %>% 
+  top_n(3, market_profit)
+
+# -> the presence of China and India is growing.
+
+# which product is sold in those region? 
+df %>% 
+  filter(country %in% c("India", "China")) %>% 
+  group_by(order_year, category) %>% 
+  summarise(profit_by_category = sum(profit)) %>% 
+  top_n(10, profit_by_category) 
+
+%>%
+  ungroup() %>% 
+  select(category) %>% 
+  unique()
+
+# Who bought the most?
+
 
 # formulate hypothesis -------------------------------------------------
 
@@ -110,7 +147,7 @@ df %>%
   
 # A. there is no significant difference across countires. 
 
-# thre must be some variasions in the shipping cost accross countires.
+# there must be some variations in the shipping cost across countries.
 # Q. how much is that? 
 g_corporate <- df %>% 
   filter(segment == "Corporate") %>% 

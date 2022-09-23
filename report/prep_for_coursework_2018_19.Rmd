@@ -1,0 +1,272 @@
+---
+title: "分析記録"
+author: "Rikiya Honda"
+date: "`r Sys.Date()`"
+output:   
+  html_document: 
+    toc: true
+    toc_depth: 3
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    code_folding: 'hide'
+    number_section: false
+    theme: readable
+    highlight: tango
+    smart: true
+    fig_width: 7
+    fig_height: 6
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE,
+                      fig.height = 6,
+                      fig.width = 8)
+Sys.setenv(lang = "en")
+```
+
+# 準備
+```{r}
+# load library ------------------------------------------------------------
+
+pacman::p_load("tidyverse", "janitor", "stringr", "lubridate", "patchwork")
+
+
+# import dataset --------------------------------------------------------
+
+path_to_github <- "https://raw.githubusercontent.com/Ricky-s-a/business_analysis/main/data/ST2187_coursework_dataset_2018_19.csv"
+df_raw <- read_csv(path_to_github)
+```
+
+# データセットの基本情報
+```{r}
+# inspect the dataset -----------------------------------------------------
+
+glimpse(df_raw)
+```
+
+# データクレンジング
+```{r}
+# tidy dataset ------------------------------------------------------------
+
+df_tidy <- df_raw %>% 
+  clean_names()
+
+# tidy
+df <- df_tidy %>% 
+  mutate(
+    order_date = as.Date(order_date, format = "%m/%d/%Y"),
+    ship_date = as.Date(ship_date, format = "%m/%d/%Y"),
+    order_year = year(order_date), 
+    order_month = month(order_date),
+    ship_year = year(ship_date),
+    ship_month = month(ship_date),
+    split_tf = round(runif(nrow(df_tidy), min = 1, max = 5)),
+    gap_date = as.numeric(difftime(ship_date, order_date, units = "days"))
+  ) %>% 
+  arrange(desc(order_date))
+
+# show 
+glimpse(df)
+```
+
+# 探索的データ分析
+
+## 数値データの基本統計量
+```{r}
+# summary of numeric data
+df %>% 
+  select(where(is.numeric)) %>% 
+  summary()
+```
+
+## 日付データのレンジ
+```{r}
+# date range
+df %>% 
+  select(ends_with("date")) %>% 
+  lapply(range)
+```
+
+## カテゴリカルデータの数
+```{r}
+# check the number of unique categorical variables
+df_tidy %>% 
+  select(where(is.character)) %>% 
+  lapply(unique) %>%
+  lapply(length)
+```
+
+## 月々のオーダーの数と出荷数
+
+```{r}
+g1 <- 
+  df %>%
+  group_by(order_year, order_month) %>% 
+  ggplot() + 
+  aes(order_date) +
+  geom_bar() 
+
+g2 <- 
+  g1 <- 
+  df %>%
+  group_by(order_year, order_month) %>% 
+  ggplot() + 
+  aes(order_date) +
+  geom_bar()
+
+g1/g2
+```
+
+## オーダーを受けてから出荷するまでの日付に国ごとのばらつきはあるのか？
+
+There is no significant difference across countires. 
+
+```{r}
+# there must be some variations in the gap between the order date and the ship date.
+# Q. how is the gap between the order date and the ship date?
+df %>% 
+  ggplot(aes(gap_date, region)) +
+  geom_boxplot()
+```
+
+## 出荷費用に関しては、どのような国ごとのばらつきはあるのか？
+
+```{r}
+# there must be some variations in the shipping cost across countries.
+# Q. how much is that? 
+g_corporate <- df %>% 
+  filter(segment == "Corporate") %>% 
+  ggplot(aes(shipping_cost, market)) +
+  geom_boxplot() +
+  labs(title = "Corporate")
+
+g_consumer <- df %>% 
+  filter(segment == "Consumer") %>% 
+  ggplot(aes(shipping_cost, market)) +
+  geom_boxplot() + 
+  labs(title = "Consumer")
+
+g_home_office <- df %>% 
+  filter(segment == "Home Office") %>% 
+  ggplot(aes(shipping_cost, market)) +
+  geom_boxplot() +
+  labs(title = "Home Office")
+
+g_corporate / g_consumer / g_home_office
+
+```
+
+
+
+## 年毎の利益と地域
+
+```{r}
+# basic info --------------------------------------------------------------
+
+# the ration of regions in profit on the annual basis
+df %>% 
+  group_by(order_year, order_month, region) %>%
+  summarise(sum_profit = sum(profit)) %>% 
+  ggplot(aes(order_year, sum_profit, fill = region)) + 
+  geom_col()
+```
+
+## 年ごとの利益
+
+```{r}
+# total profit by year
+profit_by_year <- 
+  df %>% group_by(order_year) %>% 
+  summarise(annual_profit = sum(profit))
+
+# profit ratio by year
+df %>% 
+  group_by(order_year, order_month, market) %>%
+  summarise(sum_profit = sum(profit)) %>% 
+  mutate(profit_ratio_by_year = sum_profit/filter(profit_by_year, order_year == order_year)[[2]]) %>% 
+  arrange(order_year, desc(sum_profit)) 
+```
+
+## どのマーケットが一番儲かっているのか？
+
+Especially the markets in APAc and EU are expanding.
+
+```{r}
+# Q. the most profitable market, product, category, sub_category, 
+df %>% 
+  group_by(order_year, market) %>% 
+  summarise(profit = sum(profit)) %>% 
+  arrange(order_year,desc(profit)) %>% 
+  top_n(5, profit)
+```
+
+## どの国が特に利益を上げているのか？
+
+The presence of China and India is growing.
+
+```{r}
+# Q. which country?
+df %>% 
+  filter(market %in% c("APAC", "EU")) %>% 
+  group_by(order_year, country) %>% 
+  summarise(market_profit = sum(profit)) %>% 
+  arrange(order_year, desc(market_profit)) %>% 
+  top_n(3, market_profit)
+```
+
+## インドと中国では特にどのカテゴリーが売れているのか？
+
+technology, furniture, office suplliesで変らない。
+
+```{r}
+# which category is sold in those region? 
+df %>% 
+  filter(country %in% c("India", "China")) %>% 
+  group_by(order_year, category) %>% 
+  summarise(profit_by_category = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_category)) %>% 
+  top_n(10, desc(profit_by_category)) 
+```
+
+## 大手取引先はいるのか？
+
+いるが、それぞれがバラバラ。もっとフォローアップを増やし、onetimeではなく、継続的な大手取引先を作るべき。
+
+```{r}
+df %>% 
+  group_by(order_year, customer_id) %>% 
+  summarise(profit_by_customer = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_customer)) %>% 
+  top_n(10, profit_by_customer) 
+```
+
+## 大手取引先の属性情報は？
+
+```{r}
+
+# top10 customers customer's id for every years.
+major_customers <- 
+  df %>% 
+  group_by(order_year, customer_id) %>% 
+  summarise(profit_by_customer = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_customer)) %>% 
+  top_n(10, profit_by_customer) %>%
+  ungroup() %>%  
+  select(customer_id) %>% 
+  unlist() %>% 
+  unname()
+```
+
+## 
+
+```{r}
+df %>% 
+  filter(customer_id %in% major_customers) %>%
+  group_by(order_year, customer_id, sub_category) %>% 
+  summarise(profit_subcategory = sum(profit)) %>% 
+  arrange(order_year, desc(profit_subcategory))
+```
+
