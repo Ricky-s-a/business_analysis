@@ -1,0 +1,324 @@
+---
+title: "分析記録"
+author: "Rikiya Honda"
+date: "`r Sys.Date()`"
+output:   
+  html_document: 
+    toc: true
+    toc_depth: 3
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    code_folding: 'hide'
+    number_section: false
+    theme: readable
+    highlight: tango
+    smart: true
+    fig_width: 7
+    fig_height: 6
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE,
+                      fig.height = 6,
+                      fig.width = 8)
+Sys.setenv(lang = "en")
+```
+
+# 準備
+```{r}
+# load library ------------------------------------------------------------
+
+pacman::p_load("tidyverse", "janitor", "stringr", "lubridate", "patchwork")
+
+
+# import dataset --------------------------------------------------------
+
+path_to_github <- "https://raw.githubusercontent.com/Ricky-s-a/business_analysis/main/data/ST2187_coursework_dataset_2022_23.csv"
+df_raw <- read_csv(path_to_github)
+```
+
+# データセットの基本情報
+
+このデータセットは、row:`r nrow(df)` x columns:`r ncol(df)`となっている。 
+
+```{r}
+# inspect the dataset -----------------------------------------------------
+
+glimpse(df_raw)
+```
+
+# データクレンジング
+
++ コラムの名前を小文字にする
++ いくつかの変数の作成（order_date, ship_date, order_year, order_month, ship_year, gap_date)
+
+```{r}
+# tidy dataset ------------------------------------------------------------
+
+df_tidy <- df_raw %>% 
+  clean_names()
+
+# tidy
+df <- df_tidy %>% 
+  mutate(
+    order_date = as.Date(order_date, format = "%m/%d/%Y"),
+    ship_date = as.Date(ship_date, format = "%m/%d/%Y"),
+    order_year = year(order_date), 
+    order_month = month(order_date),
+    ship_year = year(ship_date),
+    ship_month = month(ship_date),
+    split_tf = round(runif(nrow(df_tidy), min = 1, max = 5)),
+    gap_date = as.numeric(difftime(ship_date, order_date, units = "days"))
+  ) %>% 
+  arrange(desc(order_date))
+
+# show 
+glimpse(df)
+```
+
+# 探索的データ分析
+
+## 数値データの基本統計量
+
+gap_date()（ship_date - order_date)で計算されている。
+注目したいのは、salesの分布が非常に広いことである。上は、`r max(df$sales)`, 下は、`r min(df$sales)`となっていることから、高額な買い物をする顧客と少額決済をする顧客がいることがわかる。
+
+$$
+profit = sales - cost \\
+quantity \times price - cost)
+$$
+
+であるため、分析の方向としては、どうしたらprofitを改善させることができるのかということを最終的な目標として設定したい。
+
+discountに関しては内政変数であるため、その効果が実際にあったのかについての政策評価することもできるし、どうしたら利益率を改善できるのかについての政策提言もできるかもしれない。
+
+```{r}
+# summary of numeric data
+df %>% 
+    select(where(is.numeric)) %>% 
+    select(!ends_with(c("year", "month", "id", "tf", "code"))) %>% 
+  summary()
+```
+
+### 数値データのそれぞれのヒストグラム
+
+
+## 日付データのレンジ
+
+データのレンジは、2018年1月1日から2021年12月31日まで。
+
+```{r}
+# date range
+df %>% 
+  select(ends_with("date")) %>% 
+  select(!gap_date) %>% 
+  lapply(range)
+```
+
+## カテゴリカルデータの数
+
+オーダー数とorder_idとの関係とは？これがはっきりしない。
+
+総データのエントリー数が、row:`r nrow(df)`なのに対して、customer_idは、1500程度しかない。
+もしかしたら、繰り返し買っている顧客（お得意様）とそうでない新規顧客が存在するのではないか。
+それぞれに対して別々のアプローチをとることで、利益率を改善させることができるかもしれない。
+
+世界中の国々ついて述べるのは労力をともなうため、上位5か国とか、マーケットごとでまとめたほうがいいかもしれない。productについても同じことが言えそう。
+
+order_priorityは、実際に利益率改善に役に立っているのか。どかも分析もできそう。
+
+```{r}
+# check the number of unique categorical variables
+df_tidy %>% 
+  select(where(is.character)) %>% 
+  lapply(unique) %>%
+  lapply(length)
+```
+
+## 月々のオーダーの数と出荷数
+
+毎年11月、12月にかけてオーダー数が増えている。（？）
+シーズンによって商品のオーダー数が増えているかの確かめをしたほうがいいかも。
+これ、オーダー数だけじゃなくて、profit, quantity, salesに対してもやったほうがいいな。
+
+```{r}
+g1 <- 
+  df %>%
+  mutate(colour = if_else(order_month %in% c(11, 12), "red", "blue")) %>% 
+  group_by(order_year, order_month) %>% 
+  ggplot() + 
+  aes(order_date, fill = colour) +
+  geom_bar()
+
+g1
+```
+
+### 2018年の例
+
+ざっと見た感じ、11月、12月に注文数が多くなっているのがわかる。
+
+```{r}
+df %>% 
+  group_by(order_year, order_date) %>% 
+  summarise(total = n()) %>% filter(order_year == 2018, total > 50) 
+```
+
+## オーダーを受けてから出荷するまでの日付に国ごとのばらつきはあるのか？
+
+ない！
+
+```{r}
+# there must be some variations in the gap between the order date and the ship date.
+# Q. how is the gap between the order date and the ship date?
+df %>% 
+  ggplot(aes(gap_date, region)) +
+  geom_boxplot()
+```
+
+## 出荷費用に関しては、どのような国ごとのばらつきはあるのか？
+
+```{r}
+# there must be some variations in the shipping cost across countries.
+# Q. how much is that? 
+g_corporate <- df %>% 
+  filter(segment == "Corporate") %>% 
+  ggplot(aes(shipping_cost, market)) +
+  geom_boxplot() +
+  labs(title = "Corporate")
+
+g_consumer <- df %>% 
+  filter(segment == "Consumer") %>% 
+  ggplot(aes(shipping_cost, market)) +
+  geom_boxplot() + 
+  labs(title = "Consumer")
+
+g_home_office <- df %>% 
+  filter(segment == "Home Office") %>% 
+  ggplot(aes(shipping_cost, market)) +
+  geom_boxplot() +
+  labs(title = "Home Office")
+
+g_corporate / g_consumer / g_home_office
+
+```
+
+
+
+## 年毎の利益と地域
+
+```{r}
+# basic info --------------------------------------------------------------
+
+# the ration of regions in profit on the annual basis
+df %>% 
+  group_by(order_year, order_month, region) %>%
+  summarise(sum_profit = sum(profit)) %>% 
+  ggplot(aes(order_year, sum_profit, fill = region)) + 
+  geom_col()
+```
+
+## 年ごとの利益
+
+```{r}
+# total profit by year
+profit_by_year <- 
+  df %>% group_by(order_year) %>% 
+  summarise(annual_profit = sum(profit))
+
+# profit ratio by year
+df %>% 
+  group_by(order_year, order_month, market) %>%
+  summarise(sum_profit = sum(profit)) %>% 
+  mutate(profit_ratio_by_year = sum_profit/filter(profit_by_year, order_year == order_year)[[2]]) %>% 
+  arrange(order_year, desc(sum_profit)) 
+```
+
+## どのマーケットが一番儲かっているのか？
+
+Especially the markets in APAc and EU are expanding.
+
+```{r}
+# Q. the most profitable market, product, category, sub_category, 
+df %>% 
+  group_by(order_year, market) %>% 
+  summarise(profit = sum(profit)) %>% 
+  arrange(order_year,desc(profit)) %>% 
+  top_n(5, profit)
+```
+
+## どの国が特に利益を上げているのか？
+
+The presence of China and India is growing.
+
+```{r}
+# Q. which country?
+df %>% 
+  filter(market %in% c("APAC", "EU")) %>% 
+  group_by(order_year, country) %>% 
+  summarise(market_profit = sum(profit)) %>% 
+  arrange(order_year, desc(market_profit)) %>% 
+  top_n(3, market_profit)
+```
+
+## インドと中国では特にどのsubcategoryが売れているのか？
+
+technology, furniture, office suplliesで変らない。
+
+```{r}
+# which category is sold in those region? 
+df %>% 
+  filter(country %in% c("India", "China")) %>% 
+  group_by(order_year, sub_category) %>% 
+  summarise(profit_by_subcategory = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_subcategory)) %>% 
+  top_n(10, desc(profit_by_subcategory)) 
+```
+
+## 大手取引先はいるのか？
+
+いるが、それぞれがバラバラ。もっとフォローアップを増やし、one-timeではなく、継続的な大手取引先を作るべき。
+
+```{r}
+df %>% 
+  group_by(order_year, customer_id) %>% 
+  summarise(profit_by_customer = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_customer)) %>% 
+  top_n(10, profit_by_customer) 
+```
+
+## 大手取引先の属性情報は？
+
+```{r}
+
+# top10 customers customer's id for every year.
+major_customers <- 
+  df %>% 
+  group_by(order_year, customer_id) %>% 
+  summarise(profit_by_customer = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_customer)) %>% 
+  top_n(10, profit_by_customer) %>%
+  ungroup() %>%  
+  select(customer_id) %>% 
+  unlist() %>% 
+  unname()
+
+
+df %>% 
+  filter(customer_id %in% major_customers) %>%
+  group_by(order_year, customer_id, sub_category) %>% 
+  summarise(profit_by_subcategory = sum(profit)) %>% 
+  arrange(order_year, desc(profit_by_subcategory)) %>% 
+  top_n(1, profit_by_subcategory)
+```
+
+# 最後に、、、
+
+興味のある方は以下のQRコードを参照して、サイトにアクセスしてみてください。
+
+```{r}
+qrcode::qr_code("https://htmlpreview.github.io/?https://raw.githubusercontent.com/Ricky-s-a/business_analysis/main/report/prep_for_coursework_2018_19.html") %>% plot()
+```
+
