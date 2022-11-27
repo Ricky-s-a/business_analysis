@@ -144,3 +144,4 @@ g5 <-
   geom_label(label = df_profit_outlier$sub_category)
 
 ggplotly(g5)
+
