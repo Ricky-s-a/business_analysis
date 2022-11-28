@@ -27,11 +27,16 @@ knitr::opts_chunk$set(message = FALSE,
 Sys.setenv(lang = "en")
 ```
 
+
 # 準備
+
+以下の通りにパッケージとデータセットを用意する。
+すべてのコードは、[github](https://github.com/Ricky-s-a/business_analysis)に公開されています。
+
 ```{r}
 # load library ------------------------------------------------------------
 
-pacman::p_load("tidyverse", "janitor", "stringr", "lubridate", "patchwork")
+pacman::p_load("tidyverse", "janitor", "stringr", "lubridate", "patchwork", "modelr")
 
 
 # import dataset --------------------------------------------------------
@@ -46,14 +51,23 @@ df_raw <- read_csv(path_to_github)
 
 ```{r}
 # inspect the dataset -----------------------------------------------------
-
 glimpse(df_raw)
+```
+
+
+## NAの数
+
+すばらしいことに、postal codeにNAがあるだけで、そのほかにはまったくNAがない。
+
+```{r}
+# the number of na
+lapply(df_raw, function(n){sum(is.na(n))})
 ```
 
 # データクレンジング
 
 + コラムの名前を小文字にする
-+ いくつかの変数の作成（order_date, ship_date, order_year, order_month, ship_year, gap_date)
++ いくつかの変数の作成（order_date, ship_date, order_year, order_month, ship_year, gap_date, profit_ratio)
 
 ```{r}
 # tidy dataset ------------------------------------------------------------
@@ -71,9 +85,10 @@ df <- df_tidy %>%
     ship_year = year(ship_date),
     ship_month = month(ship_date),
     split_tf = round(runif(nrow(df_tidy), min = 1, max = 5)),
-    gap_date = as.numeric(difftime(ship_date, order_date, units = "days"))
+    gap_date = as.numeric(difftime(ship_date, order_date, units = "days")),
+    profit_ratio = profit/sales
   ) %>% 
-  arrange(desc(order_date))
+  arrange(desc(order_date)) 
 
 # show 
 glimpse(df)
@@ -105,7 +120,67 @@ df %>%
 
 ### 数値データのそれぞれのヒストグラム
 
-ただいま準備中。。。
+done!
+
+```{r}
+# numeric variables
+num_vars <- 
+  df %>% 
+  select(where(is.numeric)) %>% 
+  select(!ends_with(c("year", "month", "id", "tf", "code"))) %>%
+  colnames()
+
+# define the function
+
+# each 
+results <- lapply(num_vars,
+       FUN = function(n) {
+         # print(
+          ggplot(df, aes_string(n)) +
+          geom_histogram()
+         # )
+       }
+)
+
+# name the list 
+results <- `names<-`(results, num_vars)
+
+# show 
+results
+```
+
+### discountについて
+
+数値データの中で唯一のコントロールできる変数だから、深ぼっていきたい。
+
+#### discout histgram
+
+全体の65％ぐらいが、20％未満の割引なんだな。
+割引しすぎてるってのが、問題なのかも。
+
+```{r}
+df$discount %>% hist()
+```
+
+#### discount v.s. profit ratio
+
+discout しすぎてネガティブになっているのは、渋くない？
+特に割引率が高すぎるものは、profitがネガティブになっているものもある。
+そういうものって何なんだろう？どのような財？
+割引しないときは、どれくらいの利益率なのか？
+
+もうすでにテーブルはデータから取り除いてしまって考えよう。
+
+```{r}
+df %>% 
+  filter(sub_category != "Tables") %>% 
+  ggplot(aes(discount, profit_ratio)) + 
+  geom_ref_line(h = 0) +
+  geom_jitter() +
+  geom_smooth(method = "lm") 
+```
+
+
 
 ## 日付データのレンジ
 
@@ -139,7 +214,11 @@ df_tidy %>%
   lapply(length)
 ```
 
-## 月々のオーダーの数と出荷数
+## 気になる変数とその関係
+
+気になる変数を深堀していく。
+
+### 月々のオーダーの数と出荷数
 
 毎年11月、12月にかけてオーダー数が増えている。（？）
 シーズンによって商品のオーダー数が増えているかの確かめをしたほうがいいかも。
@@ -157,7 +236,7 @@ g1 <-
 g1
 ```
 
-### 2018年の例
+#### 2018年の例
 
 ざっと見た感じ、11月、12月に注文数が多くなっているのがわかる。
 
@@ -167,7 +246,7 @@ df %>%
   summarise(total = n()) %>% filter(order_year == 2018, total > 50) 
 ```
 
-## オーダーを受けてから出荷するまでの日付に国ごとのばらつきはあるのか？
+### オーダーを受けてから出荷するまでの日付に国ごとのばらつきはあるのか？
 
 ない！
 
@@ -179,7 +258,7 @@ df %>%
   geom_boxplot()
 ```
 
-## 出荷費用に関しては、どのような国ごとのばらつきはあるのか？
+### 出荷費用に関しては、どのような国ごとのばらつきはあるのか？
 
 ```{r}
 # there must be some variations in the shipping cost across countries.
@@ -208,7 +287,7 @@ g_corporate / g_consumer / g_home_office
 
 
 
-## 年毎の利益と地域
+### 年毎の利益と地域
 
 ```{r}
 # basic info --------------------------------------------------------------
@@ -221,7 +300,7 @@ df %>%
   geom_col()
 ```
 
-## 年ごとの利益　（要検討）
+### 年ごとの利益　（要検討）
 
 ```{r}
 # total profit by year
@@ -237,7 +316,7 @@ df %>%
   arrange(order_year, desc(sum_profit)) 
 ```
 
-## どのマーケットが一番儲かっているのか？
+### どのマーケットが一番儲かっているのか？
 
 Especially the markets in APAc and EU are expanding.
 
@@ -250,7 +329,7 @@ df %>%
   top_n(5, profit)
 ```
 
-## どの国が特に利益を上げているのか？
+### どの国が特に利益を上げているのか？
 
 The presence of China and India is growing.
 
@@ -264,7 +343,7 @@ df %>%
   top_n(3, market_profit)
 ```
 
-## インドと中国では特にどのsubcategoryが売れているのか？
+### インドと中国では特にどのsubcategoryが売れているのか？
 
 technology, furniture, office suplliesで変らない。
 
@@ -278,7 +357,9 @@ df %>%
   top_n(10, desc(profit_by_subcategory)) 
 ```
 
-## 大手取引先はいるのか？
+
+
+### 大手取引先はいるのか？
 
 いるが、それぞれがバラバラ。もっとフォローアップを増やし、one-timeではなく、継続的な大手取引先を作るべき。
 
@@ -290,7 +371,14 @@ df %>%
   top_n(10, profit_by_customer) 
 ```
 
-## 大手取引先の属性情報は？
+### 過去4年間でそれぞれの顧客が支配的な割合を占めているのか？
+
+```{r}
+ggplot(df, aes(x =))
+```
+
+
+### 大手取引先の属性情報は？
 
 ```{r}
 
@@ -314,6 +402,215 @@ df %>%
   arrange(order_year, desc(profit_by_subcategory)) %>% 
   top_n(1, profit_by_subcategory)
 ```
+
+# 5ページの構成
+
+## page1: Overview of the trends of quantities, order counts, sales, and profits（問題発見）
+
+これはtabuleauでやったほうが早いかも。
+
+売り上げは毎年上昇している。そして利益も上昇している。ここには問題はなさそう。
+ただ、利益率は下がっているように見える。
+
+```{r}
+df_tem <- 
+  df %>% 
+  group_by(order_year) %>% 
+  summarise(sales_year = sum(sales), shipping_cost_year = sum(shipping_cost), profit_year = sum(profit)) %>% 
+  pivot_longer(cols = c(sales_year, shipping_cost_year, profit_year), names_to = "vars", values_to = "value") %>% 
+  mutate(vars = factor(vars, levels = c("sales_year", "shipping_cost_year", "profit_year"))) 
+
+g_pg1_1 <- 
+  df_tem %>% 
+  filter(vars == "sales_year") %>% 
+  ggplot(aes(x = factor(order_year), y = value, group = vars), colour = "green") + 
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(labels = scales::label_number(accracy = 1))
+
+g_pg1_2 <- 
+  df_tem %>% 
+  filter(vars %in% c("shipping_cost_year", "profit_year")) %>% 
+  ggplot(aes(x = factor(order_year), y = value, colour = vars, group = vars)) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(labels = scales::label_number(accuracy = 1))
+
+g_pg1_1 / g_pg1_2
+```
+
+### quantityの推移
+
+3年で2倍程度になっている。目覚ましい成長。ってことは、qには問題がなさそう。
+
+```{r}
+df %>% 
+  group_by(order_year) %>% 
+  summarise(quantity_year = sum(quantity)) %>% 
+  ggplot(aes(order_year, quantity_year)) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1))
+
+```
+
+### 利益率の推移
+
+言うほど利益率が上昇している感じでもないのかな。
+0.110あたりで推移しているイメージ。
+salesの値が上昇しているから、コストが上昇しているわけではないのか。あくまでも比例的にprofitはsalesに対して伸びているのか。
+ってことは、規模の経済が働いていない可能性を示唆している。
+
+利益率を改善するにはってのが、一つの課題ではあるな。
+
+```{r}
+g_pg1_3 <- 
+  df %>% 
+  group_by(order_year) %>% 
+  summarise(profit_ratio_year = sum(profit)/sum(sales)) %>% 
+  ggplot(aes(order_year, profit_ratio_year)) +
+  geom_point() +
+  geom_line()
+
+g_pg1_3
+```
+
+
+
+## page2: What is the most profitable/less profitable product subcategory?　（解決策1の提示）
+
+### table
+```{r}
+table <- 
+  df %>% 
+  group_by(order_year, sub_category) %>% 
+  summarise(profit_ratio_year = sum(profit)/sum(sales)) %>% 
+  arrange(order_year, desc(profit_ratio_year)) 
+
+# show the table
+DT::datatable(table, 
+              rownames = FALSE, 
+              extensions = 'Buttons',
+              options = list(autoWidth = TRUE,
+                             pageLength = 5,
+                             dom = 'Bfrtip',
+                             buttons = list("csv"),
+                             scrollX = TRUE,
+                             scrollCollapse = TRUE),
+              class = 'cell-border stripe'
+  )
+```
+
+
+### graph
+
+テーブルがありえんくらい利益率低いな。
+これ売らないほうがいいんじゃない？
+
+```{r}
+# graph 
+g_pg2_1 <- 
+  table %>% 
+  ggplot(aes(factor(order_year), profit_ratio_year, colour = sub_category, group = sub_category)) +
+  geom_point() +
+  geom_line()
+
+plotly::ggplotly(g_pg2_1)
+```
+
+### もしもテーブルを売らなかったら利益率はどの程度改善するのか？
+
+テーブルの販売はやめたほうがいいですね。
+このグラフは、できれば一つにまとめたい。
+
+```{r}
+g_pg2_2 <- 
+  df %>% 
+  filter(sub_category != "Tables") %>% 
+  group_by(order_year) %>% 
+  summarise(profit_ratio_year = sum(profit)/sum(sales)) %>% 
+  ggplot(aes(order_year, profit_ratio_year)) +
+  geom_point() +
+  geom_line()
+
+g_pg1_3 + g_pg2_2
+```
+
+
+## page3: Is the discout effective? （解決策2）
+
+テーブルは、もうないものとして考えよう。
+それでも、discoutが大きくなると、profit_ratioが少なくなってしまう傾向があるな。
+つまり、全体的に言って、財の種類でいうと非弾力的ってことかな？
+もしかしたら、値段を上げたほうが利益率は改善するのかもしれない。
+
+```{r}
+g_pg3_1 <- 
+  df %>% 
+  filter(sub_category != "Tables") %>% 
+  ggplot(aes(discount, profit_ratio)) + 
+  geom_ref_line(h = 0) +
+  geom_jitter() +
+  geom_smooth(method = "lm") 
+
+g_pg3_1
+```
+
+### それぞれのsubcategoryごとのdisicount v.s. profit ratio
+
+これは、全体的に同じ傾向か。
+
+```{r}
+df %>% 
+  filter(sub_category != "Tables") %>% 
+  ggplot(aes(discount, profit_ratio, colour = sub_category)) + 
+  geom_ref_line(h = 0) +
+  geom_jitter() +
+  geom_smooth(method = "lm") +
+  facet_wrap(vars(sub_category)) + 
+  theme(legend.position = "none")
+```
+
+### それぞれのsubcategoryごとのdisicount v.s. quantity
+
+実際に、このデータからわかることは、価格の変動に対して需要が非弾力的。
+
+```{r}
+df %>% 
+  filter(sub_category != "Tables") %>% 
+  ggplot(aes(discount, quantity, colour = sub_category)) + 
+  geom_ref_line(h = 0) +
+  geom_jitter() +
+  geom_smooth(method = "lm") +
+  facet_wrap(vars(sub_category)) + 
+  theme(legend.position = "none")
+```
+
+### subcategoryごとのregresssionの結果
+
+準備中。
+
+```{r}
+# nest the dataeset based on the sub_category
+df_lm <- df %>% 
+  group_by(sub_category) %>% 
+  nest() 
+
+# name the list of the data in df_lm
+names(df_lm$data) <- df_lm$sub_category
+
+df_lm <- df_lm %>% 
+  mutate(model = map(df_lm, ~ lm_robust(quantity ~ discount, data = .)))
+  
+```
+
+
+
+
+
+## page4: country/region/market
+
+## page5: 
 
 # 最後に、、、
 
