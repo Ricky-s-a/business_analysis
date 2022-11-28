@@ -320,6 +320,6 @@ df %>%
 興味のある方は以下のQRコードを参照して、サイトにアクセスしてみてください。
 
 ```{r}
-qrcode::qr_code("https://htmlpreview.github.io/?https://raw.githubusercontent.com/Ricky-s-a/business_analysis/main/report/prep_for_coursework_2018_19.html") %>% plot()
+qrcode::qr_code("https://rpubs.com/Rikiya_Honda/975462") %>% plot()
 ```
 
