@@ -588,23 +588,78 @@ df %>%
 
 ### subcategoryごとのregresssionの結果
 
-準備中。
+下の図は、discountを説明変数とし、quantityを被説明変数としたときの単回帰分析をした時の係数を入れてある。
+
+
++ strorage
++ fasteres
++ art
++ copiers
++ paper
+
+関しては、discoutをしようが、しまいが、quantityが変わっていない。つまり、95％信頼区間の中で、discoutをしても意味がないといえるだろう。
+
+これ、念ごとのやつを作ってもいいかもしれないな。
+
 
 ```{r}
 # nest the dataeset based on the sub_category
 df_lm <- df %>% 
   group_by(sub_category) %>% 
-  nest() 
+  nest()
 
-# name the list of the data in df_lm
-names(df_lm$data) <- df_lm$sub_category
+# name the columns
+names(df_lm$data) <- df_lm$sub_category # name the list of the data in df_lm
 
+# run the regression
 df_lm <- df_lm %>% 
-  mutate(model = map(df_lm, ~ lm_robust(quantity ~ discount, data = .)))
+  mutate(model = purrr::map(data, ~ estimatr::lm_robust(quantity ~ discount, data = .))) # run the robust regression
+
+# create vars for plotting data
+coefficient <- c()
+p_value <- c()
+sd_error <- c()
+
+for (i in 1:length(df_lm$sub_category)) {
+  coefficient[i] <- df_lm$model[i][[1]]$coefficients[2]
+  p_value[i] <- df_lm$model[i][[1]]$p.value[2]
+  sd_error[i] <- df_lm$model[i][[1]]$std.error[2]
+}
+
+
+# create a data frame for plotting error bar
+df_graphics <- tibble(
+  sub_category = df_lm$sub_category,
+  coefficient = coefficient,
+  p_value = p_value,
+  sd_error = sd_error,
+  ci_lower = coefficient - 1.96*sd_error,
+  ci_upper = coefficient + 1.96*sd_error,
+  p_logical = if_else(p_value > 0.05, "p>0.05", "p<=0.05")
+  ) %>% 
+  left_join(df %>% group_by(sub_category) %>% summarise(profit_ratio = sum(profit)/sum(sales))) # add profit ratio
   
+
+
+# plot with ggplot2
+df_graphics %>% 
+  ggplot(aes(profit_ratio,
+             coefficient, 
+             colour = p_logical)) +
+  geom_point() +
+  geom_hline(yintercept = 0, alpha = 0.25, linetype = "dashed") +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper)) +
+  ggrepel::geom_text_repel(aes(label = df_lm$sub_category), check_overlap = TRUE) +
+  scale_color_manual(values = c("#ff9980", "#33ccff")) +
+  labs(title = "quantity",
+       subtitle = str_wrap("", 80),
+       x = "Profit Ratio",
+       y = "Coefficient",
+       ) +
+  theme_minimal() +
+  theme(legend.position = "right")
+
 ```
-
-
 
 
 
