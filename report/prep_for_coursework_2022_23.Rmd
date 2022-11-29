@@ -521,25 +521,59 @@ plotly::ggplotly(g_pg2_1)
 ### もしもテーブルを売らなかったら利益率はどの程度改善するのか？
 
 テーブルの販売はやめたほうがいいですね。
-このグラフは、できれば一つにまとめたい。
 
 ```{r}
 g_pg2_2 <- 
   df %>% 
-  filter(sub_category != "Tables") %>% 
   group_by(order_year) %>% 
-  summarise(profit_ratio_year = sum(profit)/sum(sales)) %>% 
-  ggplot(aes(order_year, profit_ratio_year)) +
+  summarise(profit_ratio_year_with = sum(profit)/sum(sales)) %>% 
+  left_join(by = "order_year",
+    df %>% 
+    filter(sub_category != "Tables") %>% 
+    group_by(order_year) %>% 
+    summarise(profit_ratio_year_without = sum(profit)/sum(sales))
+    ) %>% 
+  pivot_longer(cols = c(profit_ratio_year_with, profit_ratio_year_without)) %>% 
+  ggplot(aes(order_year, value, colour = name, group = name)) +
   geom_point() +
-  geom_line()
+  geom_line(aes(linetype = name))
 
-g_pg1_3 + g_pg2_2
+# show
+g_pg2_2
 ```
 
+### もしもテーブルを売らなかったら利益はどの程度改善するのか？
+
+さすがに利益自体は減ってしまうのか。
+テーブルを売るお金をほかの在庫に回せた場合、って分析もありかな？
+テーブルに使ったお金（sales）がほかの商品であった場合、というか、平均的な利益率を達成した場合の利益の増加分を計測してみようかな。
+
+あと、これ月ごとの分析にしてもいいかもしれない。
+
+```{r}
+g_pg2_3 <- 
+  df %>% 
+  group_by(order_year) %>% 
+  summarise(profit_year_with = sum(profit)) %>% 
+  left_join(by = "order_year",
+    df %>% 
+    filter(sub_category != "Tables") %>% 
+    group_by(order_year) %>% 
+    summarise(profit_year_without = sum(profit))
+    ) %>% 
+  pivot_longer(cols = c(profit_year_with, profit_year_without)) %>% 
+  ggplot(aes(order_year, value, colour = name, group = name)) +
+  geom_point() +
+  geom_line(aes(linetype = name)) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 1))
+
+# show
+g_pg2_3
+```
 
 ## page3: Is the discout effective? （解決策2）
 
-テーブルは、もうないものとして考えよう。
+テーブルは、もうないものとして考えよう。(いや、やっぱり入れておこう）
 それでも、discoutが大きくなると、profit_ratioが少なくなってしまう傾向があるな。
 つまり、全体的に言って、財の種類でいうと非弾力的ってことかな？
 もしかしたら、値段を上げたほうが利益率は改善するのかもしれない。
@@ -547,7 +581,7 @@ g_pg1_3 + g_pg2_2
 ```{r}
 g_pg3_1 <- 
   df %>% 
-  filter(sub_category != "Tables") %>% 
+  # filter(sub_category != "Tables") %>% 
   ggplot(aes(discount, profit_ratio)) + 
   geom_ref_line(h = 0) +
   geom_jitter() +
@@ -556,13 +590,13 @@ g_pg3_1 <-
 g_pg3_1
 ```
 
-### それぞれのsubcategoryごとのdisicount v.s. profit ratio
+### それぞれのsubcategoryごとのdiscount v.s. profit ratio
 
 これは、全体的に同じ傾向か。
 
 ```{r}
 df %>% 
-  filter(sub_category != "Tables") %>% 
+  # filter(sub_category != "Tables") %>% 
   ggplot(aes(discount, profit_ratio, colour = sub_category)) + 
   geom_ref_line(h = 0) +
   geom_jitter() +
@@ -571,7 +605,7 @@ df %>%
   theme(legend.position = "none")
 ```
 
-### それぞれのsubcategoryごとのdisicount v.s. quantity
+### それぞれのsubcategoryごとのdiscount v.s. quantity
 
 実際に、このデータからわかることは、価格の変動に対して需要が非弾力的。
 
@@ -586,7 +620,25 @@ df %>%
   theme(legend.position = "none")
 ```
 
+### それぞれのsubcategoryごとのdiscount v.s. profit 
+
+profitのほうが見ていて面白そうだな。
+結局、discountにかかわらず、利益が変わらないから意味がないって言えるしね。
+
+```{r}
+df %>% 
+  filter(sub_category != "Tables") %>% 
+  ggplot(aes(discount, profit, colour = sub_category)) + 
+  geom_ref_line(h = 0) +
+  geom_jitter() +
+  geom_smooth(method = "lm") +
+  facet_wrap(vars(sub_category)) + 
+  theme(legend.position = "none")
+```
+
 ### subcategoryごとのregresssionの結果
+
+#### v.s quantity
 
 下の図は、discountを説明変数とし、quantityを被説明変数としたときの単回帰分析をした時の係数を入れてある。
 
@@ -599,8 +651,9 @@ df %>%
 
 関しては、discoutをしようが、しまいが、quantityが変わっていない。つまり、95％信頼区間の中で、discoutをしても意味がないといえるだろう。
 
-これ、念ごとのやつを作ってもいいかもしれないな。
+これ、年ごとのやつを作ってもいいかもしれないな。
 
+ただし、売れない商品をもしかしたらdiscountしているのかもしれないため、discountしたから、売上数量が減ったという原因と結果を表しているわけではないことに注意するべきである。
 
 ```{r}
 # nest the dataeset based on the sub_category
@@ -651,16 +704,84 @@ df_graphics %>%
   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper)) +
   ggrepel::geom_text_repel(aes(label = df_lm$sub_category), check_overlap = TRUE) +
   scale_color_manual(values = c("#ff9980", "#33ccff")) +
-  labs(title = "quantity",
+  labs(title = "quantity = Beta_0 + Beta_1 * discount + epsilon",
        subtitle = str_wrap("", 80),
        x = "Profit Ratio",
-       y = "Coefficient",
+       y = "Coefficient (annual quantity)",
        ) +
   theme_minimal() +
   theme(legend.position = "right")
 
 ```
 
+
+#### v.s profit
+
+下の図は、discountを説明変数とし、profitを被説明変数としたときの単回帰分析をした時の係数を入れてある。
+discountによって確実に利益は下がっている。これは、おおよそpriceが下がってしまっているからだろう。
+しかし、価格弾力的な材に関しては、cost一定だと仮定すると、priceの上昇によって、
+
+ほとんどの商品に関して、discoutをしようが、しまいが、profitが変わっていない。つまり、95％信頼区間の中で、discoutをしても意味がないといえるだろう。
+
+
+```{r}
+# nest the dataeset based on the sub_category
+df_lm <- df %>% 
+  group_by(sub_category) %>% 
+  nest()
+
+# name the columns
+names(df_lm$data) <- df_lm$sub_category # name the list of the data in df_lm
+
+# run the regression
+df_lm <- df_lm %>% 
+  mutate(model = purrr::map(data, ~ estimatr::lm_robust(profit ~ discount, data = .))) # run the robust regression
+
+# create vars for plotting data
+coefficient <- c()
+p_value <- c()
+sd_error <- c()
+
+for (i in 1:length(df_lm$sub_category)) {
+  coefficient[i] <- df_lm$model[i][[1]]$coefficients[2]
+  p_value[i] <- df_lm$model[i][[1]]$p.value[2]
+  sd_error[i] <- df_lm$model[i][[1]]$std.error[2]
+}
+
+
+# create a data frame for plotting error bar
+df_graphics <- tibble(
+  sub_category = df_lm$sub_category,
+  coefficient = coefficient,
+  p_value = p_value,
+  sd_error = sd_error,
+  ci_lower = coefficient - 1.96*sd_error,
+  ci_upper = coefficient + 1.96*sd_error,
+  p_logical = if_else(p_value > 0.05, "p>0.05", "p<=0.05")
+  ) %>% 
+  left_join(df %>% group_by(sub_category) %>% summarise(profit_ratio = sum(profit)/sum(sales))) # add profit ratio
+  
+
+
+# plot with ggplot2
+df_graphics %>% 
+  ggplot(aes(profit_ratio,
+             coefficient, 
+             colour = p_logical)) +
+  geom_point() +
+  geom_hline(yintercept = 0, alpha = 0.25, linetype = "dashed") +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper)) +
+  ggrepel::geom_text_repel(aes(label = df_lm$sub_category), check_overlap = TRUE) +
+  scale_color_manual(values = c("#ff9980", "#33ccff")) +
+  labs(title = "profit = Beta_0 + Beta_1 * discount + epsilon",
+       subtitle = str_wrap("", 80),
+       x = "Profit Ratio",
+       y = "Coefficient (annual profit)",
+       ) +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+```
 
 
 ## page4: country/region/market
