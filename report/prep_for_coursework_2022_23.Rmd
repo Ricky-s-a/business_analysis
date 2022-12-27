@@ -68,6 +68,7 @@ lapply(df_raw, function(n){sum(is.na(n))})
 
 + コラムの名前を小文字にする
 + いくつかの変数の作成（order_date, ship_date, order_year, order_month, ship_year, gap_date, profit_ratio)
++ price = sales / (1 - discount) / quantity
 
 ```{r}
 # tidy dataset ------------------------------------------------------------
@@ -86,7 +87,13 @@ df <- df_tidy %>%
     ship_month = month(ship_date),
     split_tf = round(runif(nrow(df_tidy), min = 1, max = 5)),
     gap_date = as.numeric(difftime(ship_date, order_date, units = "days")),
-    profit_ratio = profit/sales
+    profit_ratio = profit/sales,
+    price = sales / (1-discount) / quantity,
+    profit_per = profit / quantity,
+    shipping_cost_per = shipping_cost / quantity,
+    others_cost = price - shipping_cost_per,
+    others_cost_per = others_cost / quantity,
+    profit_ratio_per = profit_per / price
   ) %>% 
   arrange(desc(order_date)) 
 
@@ -97,6 +104,11 @@ glimpse(df)
 # 探索的データ分析
 
 ## 数値データの基本統計量
+
+### ひとつひとつのpriceってどう計算されている？
+
+
+### 考え方
 
 gap_date()（ship_date - order_date)で計算されている。
 注目したいのは、salesの分布が非常に広いことである。上は、`r max(df$sales)`, 下は、`r min(df$sales)`となっていることから、高額な買い物をする顧客と少額決済をする顧客がいることがわかる。
@@ -112,11 +124,32 @@ discountに関しては内政変数であるため、その効果が実際にあ
 
 ```{r}
 # summary of numeric data
+mcor <- 
+  df %>% 
+  select(where(is.numeric)) %>% 
+  select(!ends_with(c("year", "month", "id", "tf", "code"))) %>% 
+  summary()
+
+library(corrplot)
+corrplot::corrplot(mcor, 
+                   type = "lower", # 下半分を表示
+                   method = "shade", # 四角いパネルで表示
+                   shade.col = NA, # パネルに政府を示す斜線を加えない
+                   tl.col = "black", # textlabelの色を変える
+                   tl.srt = 45, # 上部テキストラベルの角度を変更
+                   addCoef.col = "black", # 相関係数を黒で表示
+                   cl.pos = "n", # 凡例を表示させない
+                   order = "AOE") # "hclust", "AOE", "FPC"
+```
+### 相関係数
+
+```{r}
 df %>% 
     select(where(is.numeric)) %>% 
     select(!ends_with(c("year", "month", "id", "tf", "code"))) %>% 
-  summary()
+  cor()
 ```
+
 
 ### 数値データのそれぞれのヒストグラム
 
